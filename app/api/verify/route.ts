@@ -1,17 +1,11 @@
+// app/api/keys/route.ts
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const { ingredient } = body;
+export const runtime = "nodejs"; // ensure env vars work
 
-  if (!ingredient) {
-    return NextResponse.json({ error: "No ingredient provided" }, { status: 400 });
-  }
-
-  // Example dummy response — replace with real lookup
+export async function GET() {
   return NextResponse.json({
-    input: ingredient,
-    verdict: "PASS", // or "FAIL"
-    reason: "Example only — replace with real logic"
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   });
 }

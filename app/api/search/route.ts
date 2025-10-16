@@ -1,3 +1,4 @@
+// app/api/search/route.ts
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -9,19 +10,26 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.SERPER_API_KEY;
-    const query = `${product} ingredients site:openbeautyfacts.org`;
+    if (!apiKey) {
+      return NextResponse.json({ error: "Missing Serper API key" }, { status: 500 });
+    }
 
+    // Google-like search via Serper
+    const query = `${product} site:openbeautyfacts.org ingredients`;
     const res = await fetch("https://google.serper.dev/search", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-API-KEY": apiKey!,
+        "X-API-KEY": apiKey,
       },
       body: JSON.stringify({ q: query }),
     });
 
     const data = await res.json();
-    const link = data?.organic?.[0]?.link;
+    const link =
+      data?.organic?.[0]?.link ||
+      data?.organic?.find((r: any) => r.link?.includes("openbeautyfacts"))?.link;
+
     if (!link) {
       return NextResponse.json({ ingredients: [], source: null });
     }
@@ -29,12 +37,14 @@ export async function POST(req: Request) {
     const page = await fetch(link);
     const html = await page.text();
 
-    const match = html.match(/INGREDIENTS?[:\s]*([\w\s,;()\-.'%]+)/i);
+    // Extract ingredients
+    const regex = /INGREDIENTS?[:\s]*([\w\s,;()\-.'%]+)/i;
+    const match = html.match(regex);
     const ingredients = match
       ? match[1]
           .split(/[;,]/)
-          .map(i => i.trim())
-          .filter(i => i.length > 1)
+          .map((i) => i.trim())
+          .filter((i) => i.length > 1)
       : [];
 
     return NextResponse.json({

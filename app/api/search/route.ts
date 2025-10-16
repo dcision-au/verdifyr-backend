@@ -1,4 +1,3 @@
-// app/api/search/route.ts
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -9,33 +8,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid product input" }, { status: 400 });
     }
 
-    // Step 1: Search by product name
-    const searchUrl = `https://world.openbeautyfacts.org/api/v2/search?search_terms=${encodeURIComponent(
-      product
-    )}&page_size=1`;
+    let productDetails: any = null;
 
-    const searchRes = await fetch(searchUrl);
-    const searchData = await searchRes.json();
-    const first = searchData?.products?.[0];
-
-    if (!first) {
-      return NextResponse.json({ ingredients: [], source: null });
-    }
-
-    // Step 2: If barcode/code exists, fetch detailed product info
-    let productDetails = first;
-    if (first.code) {
-      const detailUrl = `https://world.openbeautyfacts.org/api/v2/product/${first.code}.json`;
+    // ✅ If barcode detected (only digits, 8–14 long)
+    if (/^\d{8,14}$/.test(product.trim())) {
+      const detailUrl = `https://world.openbeautyfacts.org/api/v2/product/${product}.json`;
       const detailRes = await fetch(detailUrl);
-      if (detailRes.ok) {
+      const detailData = await detailRes.json();
+      productDetails = detailData.product || null;
+    } else {
+      // 🔍 Otherwise search by name
+      const searchUrl = `https://world.openbeautyfacts.org/api/v2/search?search_terms=${encodeURIComponent(
+        product
+      )}&page_size=1`;
+      const searchRes = await fetch(searchUrl);
+      const searchData = await searchRes.json();
+      const first = searchData?.products?.[0];
+      if (first?.code) {
+        const detailUrl = `https://world.openbeautyfacts.org/api/v2/product/${first.code}.json`;
+        const detailRes = await fetch(detailUrl);
         const detailData = await detailRes.json();
-        if (detailData?.product) productDetails = detailData.product;
+        productDetails = detailData.product || first;
       }
     }
 
-    // Step 3: Extract clean data
-    const productName =
-      productDetails.product_name || productDetails.generic_name || product;
+    if (!productDetails) {
+      return NextResponse.json({ product, source: null, ingredients: [] });
+    }
+
     const ingredientsRaw = productDetails.ingredients_text || "";
     const ingredients = ingredientsRaw
       ? ingredientsRaw
@@ -44,20 +44,13 @@ export async function POST(req: Request) {
           .filter((i: string) => i.length > 1)
       : [];
 
-    const source =
-      productDetails.url ||
-      `https://world.openbeautyfacts.org/product/${productDetails.code}`;
-
     return NextResponse.json({
-      product: productName,
-      source,
+      product: productDetails.product_name || product,
+      source: productDetails.url || `https://world.openbeautyfacts.org/product/${productDetails.code}`,
       ingredients,
     });
   } catch (err) {
-    console.error("Open Beauty Facts fetch error:", err);
-    return NextResponse.json(
-      { error: "Search failed or no product found" },
-      { status: 500 }
-    );
+    console.error("Open Beauty Facts error:", err);
+    return NextResponse.json({ error: "Search failed" }, { status: 500 });
   }
 }

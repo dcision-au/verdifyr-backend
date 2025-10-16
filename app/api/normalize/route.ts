@@ -7,7 +7,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing raw text" }, { status: 400 });
     }
 
-    const systemPrompt = `
+const systemPrompt = `
 You are an ingredient list normalizer.
 Your task: clean messy OCR or user-typed ingredient text and return JSON only.
 Output shape:
@@ -16,9 +16,9 @@ Output shape:
   "notes": ["what you fixed or clarified"]
 }
 Rules:
-- Preserve order; don't add or remove ingredients.
+- Preserve ingredient order; don't add or remove items.
 - Fix punctuation, OCR typos, spacing, capitalization (INCI style).
-- Keep asterisks (*) only if they mark organic ingredients.
+- Remove all asterisks (*) and similar footnote symbols.
 - Never include any text other than valid JSON.
 `;
 

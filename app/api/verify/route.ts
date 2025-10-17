@@ -1,52 +1,42 @@
-import { NextResponse } from "next/server";
-import OpenAI from "openai";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+// app/api/verify/route.ts
+import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const { passed, restricted, forbidden, nonPassJSON } = await req.json();
+    const { ingredient } = await req.json();
 
-    if (!nonPassJSON) {
-      return NextResponse.json({ error: "Missing summary or nonPass data" }, { status: 400 });
+    if (!ingredient || typeof ingredient !== 'string') {
+      return NextResponse.json({ error: 'Invalid ingredient input' }, { status: 400 });
     }
 
-    const prompt = `
-I have some cosmetic ingredients with these results:
-✅ ${passed ?? 0} Passed, ⚠️ ${restricted ?? 0} Restricted, ⛔️ ${forbidden ?? 0} Forbidden.
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-Below is the JSON output for the non-passed or uncertain ingredients:
-${nonPassJSON}
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json({ error: 'Missing Supabase credentials' }, { status: 500 });
+    }
 
-Please:
-1. Verify whether these assumptions are correct (safe, restricted, or potentially unsafe under EU Cosmetic Regulation).
-2. Summarize key notes or exceptions in plain English.
-3. Keep it under 8 lines, concise and factual.
-Respond strictly as a JSON object:
-{
-  "summary": "...",
-  "notes": ["...", "..."]
-}
-`;
+    const url = `${supabaseUrl}/rest/v1/rpc/verify_ingredient_exact`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ q: ingredient }),
     });
 
-    const text = completion.choices[0]?.message?.content?.trim() ?? "{}";
+    const data = await res.json();
 
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = { summary: text, notes: [] };
+    if (!res.ok) {
+      return NextResponse.json({ error: data }, { status: res.status });
     }
 
-    return NextResponse.json(parsed);
-  } catch (error: any) {
-    console.error("❌ Error in /api/verify:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('[verify] Error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

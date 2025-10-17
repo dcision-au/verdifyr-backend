@@ -19,26 +19,38 @@ export async function POST(req: Request) {
     const nonPassJSON = JSON.stringify(nonPass, null, 2);
 
     const prompt = `
-I have some cosmetic ingredients with these results:
+You are an EU cosmetic safety assistant. Analyze the following data.
+
+Summary:
 ✅ ${passed} Passed, ⚠️ ${restricted} Restricted, ⛔️ ${forbidden} Forbidden.
 
 Below is the JSON output for the non-passed or uncertain ingredients:
 ${nonPassJSON}
 
-Please:
-1. Verify whether the assumptions appear correct (i.e., which are likely safe, restricted, or potentially unsafe under EU Cosmetic Regulation).
-2. Summarize any key notes or exceptions in plain English.
-3. Keep it under 8 lines, concise and factual.
+Return your response **strictly in JSON format** like this:
+{
+  "summary": {
+    "likely_safe": [ "ingredient1", "ingredient2" ],
+    "restricted": [ "ingredient3" ],
+    "potentially_unsafe": [ "ingredient4" ]
+  },
+  "commentary": "Short 4–6 line factual summary explaining the overall safety and main concerns under EU Cosmetics Regulation."
+}
+
+Do not include any extra commentary outside the JSON.
 `;
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.4,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
     });
 
-    const text = completion.choices[0]?.message?.content?.trim() ?? "No response.";
-    return new NextResponse(text, { status: 200 });
+    const text = completion.choices[0]?.message?.content?.trim() ?? "{}";
+    const json = JSON.parse(text);
+
+    return NextResponse.json(json, { status: 200 });
   } catch (err: any) {
     console.error("Error in /api/verify:", err);
     return NextResponse.json({ error: err.message || "Internal Server Error" }, { status: 500 });

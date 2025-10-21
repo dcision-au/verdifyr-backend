@@ -1,38 +1,59 @@
-export const runtime = "nodejs";
-
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
+
 export async function POST(req: Request) {
   try {
-    const { token, updates } = await req.json();
+    const authHeader = req.headers.get("authorization");
+    const token = authHeader?.replace("Bearer ", "");
 
-    if (!token) return NextResponse.json({ error: "Missing token" }, { status: 401 });
+    console.log("🔑 Authorization header:", authHeader);
+    console.log("🔑 Extracted token:", token);
 
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    if (!token || token === "guest") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    // Verify the user via token
     const {
       data: { user },
-      error: authError
+      error: authError,
     } = await supabase.auth.getUser(token);
 
-    if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    console.log("👤 Supabase user:", user);
+    console.log("❌ Supabase getUser error:", authError);
 
-    // Update user profile
-    const { error } = await supabase
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+
+    const updatePayload = {
+      skin_type: body.skinType ?? null,
+      preferences: body.preferences ?? [],
+      trust_mode: body.mode ?? "User",
+    };
+
+    const { error: updateError } = await supabase
       .from("user_profiles")
-      .update(updates)
+      .update(updatePayload)
       .eq("user_id", user.id);
 
-    if (error) throw error;
+    if (updateError) {
+      console.error("❌ Failed to update profile:", updateError.message);
+      return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error("❌ Profile update error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("❌ Profile update API error:", err.message);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

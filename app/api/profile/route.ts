@@ -19,6 +19,7 @@ export async function GET(req: Request) {
       console.warn("⚠️ Guest token detected, returning fallback guest profile");
       return NextResponse.json({
         id: "guest",
+        user_id: null,
         email: "guest@local",
         mode: "Guest",
         skinType: null,
@@ -30,18 +31,18 @@ export async function GET(req: Request) {
     // ✅ Verify Supabase JWT
     const {
       data: { user },
-      error,
+      error: authError,
     } = await supabase.auth.getUser(token);
 
     console.log("👤 Supabase user:", user);
-    console.log("❌ Supabase getUser error:", error);
+    console.log("❌ Supabase getUser error:", authError);
 
-    if (error || !user) {
+    if (authError || !user) {
       console.error("⚠️ Invalid or expired token");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ✅ Fetch user profile from table (FIXED: use user_id instead of id)
+    // ✅ Fetch user profile from table
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
       .select("*")
@@ -51,10 +52,12 @@ export async function GET(req: Request) {
     console.log("📄 Supabase profile:", profile);
     console.log("❌ Supabase profile error:", profileError);
 
+    // ⚠️ No profile found — return fallback but keep structure consistent
     if (profileError || !profile) {
-      console.warn("⚠️ No user profile found, returning fallback");
+      console.warn("⚠️ No user profile found, returning fallback profile object");
       return NextResponse.json({
-        id: user.id,
+        id: null,
+        user_id: user.id,
         email: user.email,
         mode: "User",
         skinType: null,
@@ -63,9 +66,14 @@ export async function GET(req: Request) {
       });
     }
 
-    // ✅ Merge and return with editable flag
+    // ✅ Merge and return profile with editable flag
     return NextResponse.json({
-      ...profile,
+      id: profile.id,
+      user_id: profile.user_id,
+      email: user.email,
+      mode: profile.trust_mode ?? "User",
+      skinType: profile.skin_type ?? null,
+      preferences: profile.preferences ?? [],
       isEditable: true,
     });
   } catch (err: any) {

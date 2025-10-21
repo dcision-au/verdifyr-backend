@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY! // ✅ use service key to allow updates
-);
-
 export async function POST(req: Request) {
+  const supabase = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  );
+
   try {
     const body = await req.json();
     const { token, updates } = body;
@@ -18,7 +18,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ✅ Verify Supabase JWT
     const {
       data: { user },
       error: authError,
@@ -30,7 +29,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ✅ Prepare payload safely
     const updatePayload = {
       display_name: updates.display_name ?? null,
       skin_type: updates.skin_type ?? null,
@@ -42,7 +40,6 @@ export async function POST(req: Request) {
 
     console.log("📦 Update payload:", updatePayload);
 
-    // ✅ Apply update
     const { error: updateError } = await supabase
       .from("user_profiles")
       .update(updatePayload)

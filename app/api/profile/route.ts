@@ -41,11 +41,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ✅ Fetch user profile from table
+    // ✅ Fetch user profile from table (FIXED: use user_id instead of id)
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
       .select("*")
-      .eq("id", user.id)
+      .eq("user_id", user.id)
       .single();
 
     console.log("📄 Supabase profile:", profile);
@@ -68,9 +68,11 @@ export async function GET(req: Request) {
       ...profile,
       isEditable: true,
     });
-
   } catch (err: any) {
     console.error("❌ Profile API error:", err.message);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

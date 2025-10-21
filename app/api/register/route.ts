@@ -18,10 +18,10 @@ export async function POST(req: Request) {
       throw new Error("Missing SUPABASE environment variables");
     }
 
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
     // 1️⃣ Create Supabase user
     const { data, error } = await supabase.auth.signUp({

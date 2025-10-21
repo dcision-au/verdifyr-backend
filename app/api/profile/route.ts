@@ -11,8 +11,12 @@ export async function GET(req: Request) {
     const authHeader = req.headers.get("authorization");
     const token = authHeader?.replace("Bearer ", "");
 
+    console.log("🔑 Authorization header:", authHeader);
+    console.log("🔑 Extracted token:", token);
+
     // 🧱 Guest mode — skip Supabase lookup
     if (!token || token === "guest") {
+      console.warn("⚠️ Guest token detected, returning fallback guest profile");
       return NextResponse.json({
         id: "guest",
         email: "guest@local",
@@ -29,6 +33,9 @@ export async function GET(req: Request) {
       error,
     } = await supabase.auth.getUser(token);
 
+    console.log("👤 Supabase user:", user);
+    console.log("❌ Supabase getUser error:", error);
+
     if (error || !user) {
       console.error("⚠️ Invalid or expired token");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -40,6 +47,9 @@ export async function GET(req: Request) {
       .select("*")
       .eq("id", user.id)
       .single();
+
+    console.log("📄 Supabase profile:", profile);
+    console.log("❌ Supabase profile error:", profileError);
 
     if (profileError || !profile) {
       console.warn("⚠️ No user profile found, returning fallback");
@@ -58,6 +68,7 @@ export async function GET(req: Request) {
       ...profile,
       isEditable: true,
     });
+
   } catch (err: any) {
     console.error("❌ Profile API error:", err.message);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

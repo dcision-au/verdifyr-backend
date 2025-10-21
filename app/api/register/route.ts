@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Missing SUPABASE environment variables");
     }
 

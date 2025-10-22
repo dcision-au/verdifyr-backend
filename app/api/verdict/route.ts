@@ -33,23 +33,37 @@ export async function POST(req: Request) {
     }
 
     // 🧾 Build GPT prompt
-    const prompt = `
-You are an EU cosmetics safety expert.
-Given the following ingredients, provide a factual, structured classification:
+const prompt = `
+You are an EU cosmetics safety expert with deep knowledge of Regulation (EC) No 1223/2009
+and the COSING database (Annexes II–VI).
 
-1️⃣ Passed (safe ingredients) — simply repeat their names.
-2️⃣ Restricted — extract objective reasons why users might need caution
-    (e.g. "potential skin irritant", "fragrance allergen", "eye irritant", "UV filter with limits").
-    Base it only on EU regulation intent, not personal opinion.
-3️⃣ Unknown — determine whether any realistic risk is known
-    (e.g. "botanical extract with limited data", "trade ingredient blend", "likely safe").
-    If no known risk, mark as "no known risk".
+Re-evaluate the provided ingredients and reclassify them correctly:
 
-Respond strictly in JSON:
+1️⃣ **Forbidden (Annex II)** — substances prohibited from use in cosmetics.
+    - Check for direct or equivalent matches (e.g. "animal fat" ≈ Entry 419).
+    - Include an annex reference number or short justification if possible.
+
+2️⃣ **Restricted (Annex III, IV, V, VI)** — ingredients allowed only under specific limits, 
+    concentrations, or product types. 
+    - Identify if something could belong to these annexes (e.g., colorants, UV filters, preservatives).
+
+3️⃣ **Passed (Safe)** — ingredients that appear to have no known restriction or risk 
+    under the Cosmetics Regulation.
+
+4️⃣ **Unknown** — substances or trade ingredients not found in Annex II–VI 
+    but possibly outside standard EU cosmetic nomenclature 
+    (e.g. new molecules, plant blends, proprietary materials).
+
+Use your general EU regulatory understanding and chemical reasoning.
+If you see animal-derived, hormonal, antibiotic, or pharmacological substances, 
+cross-check them carefully against Annex II and related entries.
+
+Return strictly valid JSON:
 {
+  "forbidden": [{"ingredient": "string", "annex_reference": "string or null", "reason": "string"}],
+  "restricted": [{"ingredient": "string", "annex_reference": "string or null", "reason_for_caution": "string"}],
   "passed": ["string"],
-  "restricted": [{"ingredient":"string","reason_for_caution":"string"}],
-  "unknown": [{"ingredient":"string","potential_risk":"string"}]
+  "unknown": [{"ingredient": "string", "potential_risk": "string"}]
 }
 
 INPUT DATA:

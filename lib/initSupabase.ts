@@ -1,10 +1,13 @@
-// lib/supabaseClient.ts
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+export const getSupabaseServerClient = () => {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Prevent build crash if env vars aren't available during build
-export const supabase = (supabaseUrl && supabaseAnonKey)
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+  if (!url || !key) {
+    console.warn("⚠️ Missing Supabase env vars during server init");
+    return null;
+  }
+
+  return createClient(url, key);
+};

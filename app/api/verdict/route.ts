@@ -24,6 +24,14 @@ export async function POST(req: Request) {
       }
     }
 
+    // 🩹 Fallback: if no arrays provided but we got an input string, use that as unknown
+    if ((!passed?.length && !restricted?.length && !unknown?.length) && body.input) {
+      console.log("🩹 Fallback applied — using input as unknown:", body.input);
+      passed = [];
+      restricted = [];
+      unknown = [body.input];
+    }
+
     // 🧠 Validate structure
     if (!passed || !restricted || !unknown) {
       return NextResponse.json(
@@ -33,7 +41,7 @@ export async function POST(req: Request) {
     }
 
     // 🧾 Build GPT prompt
-const prompt = `
+    const prompt = `
 You are an EU cosmetics safety expert with deep knowledge of Regulation (EC) No 1223/2009
 and the COSING database (Annexes II–VI).
 

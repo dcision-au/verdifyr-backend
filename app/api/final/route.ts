@@ -8,7 +8,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { passed, restricted, forbidden, nonPassJSON } = body;
+    const { passed, restricted, forbidden, nonPassJSON, passedNames } = body;
 
     if (!nonPassJSON) {
       return NextResponse.json({ error: "Missing nonPassJSON" }, { status: 400 });
@@ -103,8 +103,15 @@ Goals:
     if (!content)
       return NextResponse.json({ error: "No response from model" }, { status: 500 });
 
-    // 🧠 Parse and ensure forbidden list is preserved even if model omits it
     const result = JSON.parse(content);
+
+    // 🩵 Re-append passed ingredients (from client) without sending them to GPT
+    if (passedNames && Array.isArray(passedNames)) {
+      if (!result.passed) result.passed = [];
+      result.passed = [...new Set([...result.passed, ...passedNames])];
+    }
+
+    // 🧠 Ensure forbidden list is preserved even if model omits it
     if (!result.forbidden || result.forbidden.length === 0) {
       result.forbidden = forbiddenItems.map((f: any) => ({
         ingredient: f.input || f.matched_name || "Unknown",

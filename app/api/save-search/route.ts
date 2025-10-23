@@ -13,21 +13,25 @@ export async function POST(req: Request) {
     let user_id: string | null = null;
     let anon_id = body.anon_id;
 
-    // 🧠 Verify JWT token if provided
+    // 🧠 Verify the token if provided
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
+
       const supabase = createClient(
         process.env.SUPABASE_URL!,
         process.env.SUPABASE_ANON_KEY!,
-        { global: { headers: { Authorization: `Bearer ${token}` } } }
+        {
+          global: { headers: { Authorization: `Bearer ${token}` } },
+        }
       );
+
       const { data: { user }, error } = await supabase.auth.getUser();
       if (!error && user) {
         user_id = user.id;
       }
     }
 
-    // Fallback to anon if no valid user
+    // 🔄 Fallback to anon if not authenticated
     if (!user_id) {
       if (!anon_id || anon_id.length < 30) anon_id = randomUUID();
     }
@@ -46,8 +50,8 @@ export async function POST(req: Request) {
       raw_name: name,
       raw_cas: null,
       anon_id,
-      session_id,
       user_id,
+      session_id,
       created_at: new Date().toISOString(),
       app_version,
       final_check,
@@ -63,7 +67,11 @@ export async function POST(req: Request) {
       .select();
 
     if (error) throw error;
-    return NextResponse.json({ success: true, session_id, inserted: data }, { status: 200 });
+
+    return NextResponse.json(
+      { success: true, session_id, inserted: data },
+      { status: 200 }
+    );
   } catch (err: any) {
     console.error("💥 save-search error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });

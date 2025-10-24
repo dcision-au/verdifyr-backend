@@ -11,32 +11,29 @@ export async function POST(req: Request) {
     const { ingredient, full_ingredient_list, classified } = body;
 
     if (!ingredient || !full_ingredient_list || !classified) {
-      return NextResponse.json(
-        { error: "Missing required fields." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
     }
 
-    // 🧠 System prompt: concise, reasoning-aware, EU-focused
     const systemPrompt = `
 You are Verdifyr, a regulatory assistant specialized in EU cosmetics compliance.
-You are given a cosmetic product ingredient list and its internal classification.
-Your job is to verify or correct the classification for the specified ingredient based on EU Regulation (EC) No 1223/2009.
-Explain your reasoning clearly, as if talking to a consumer, without quoting raw legislation.
+You know the structure of COSING Annexes II–VI:
+- Annex II → Forbidden
+- Annex III → Restricted
+- Annex IV → Colourants
+- Annex V → Preservatives
+- Annex VI → UV Filters
+Treat IV–VI as “restricted but safe within limits”.
+Explain reasoning in plain English.
 
-If the classification seems correct, confirm it and explain why.
-If incorrect, provide a corrected classification and explain why.
-Never guess—if uncertain, say that it requires manual verification.
-Output structured JSON, no prose, in this format:
-
+Output JSON:
 {
   "ingredient": "...",
   "classification": "Passed | Restricted | Forbidden | Unknown",
   "verified_correct": true | false,
   "corrected_classification": "string or null",
-  "explanation": "short, plain English summary"
+  "explanation": "short explanation"
 }
-    `;
+`;
 
     const userPrompt = `
 Ingredient: ${ingredient}
@@ -46,8 +43,6 @@ ${JSON.stringify(full_ingredient_list, null, 2)}
 
 Current classification:
 ${JSON.stringify(classified, null, 2)}
-
-Please analyze only the specified ingredient and respond in the required JSON format.
 `;
 
     const response = await client.chat.completions.create({
@@ -67,15 +62,9 @@ Please analyze only the specified ingredient and respond in the required JSON fo
       parsed = { raw_response: raw };
     }
 
-    return NextResponse.json(
-      { success: true, result: parsed, raw },
-      { status: 200 }
-    );
+    return NextResponse.json({ success: true, result: parsed, raw }, { status: 200 });
   } catch (err: any) {
     console.error("❌ /api/ask error:", err);
-    return NextResponse.json(
-      { error: "Internal Server Error", details: err.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal Server Error", details: err.message }, { status: 500 });
   }
 }

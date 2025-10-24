@@ -5,6 +5,15 @@ import path from "path";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+interface NormalizedIngredient {
+  normalizedVerdict?: string;
+  annex?: string;
+  verdict?: string;
+  input?: string;
+  matched_name?: string;
+  [key: string]: any;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -14,34 +23,63 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing nonPassJSON" }, { status: 400 });
     }
 
-    // Load your normalized INCI list from Resources/ingredients.json
+    // Load normalized INCI vocabulary
     const resourcePath = path.join(process.cwd(), "app/Resources/ingredients.json");
     let knownIngredients: string[] = [];
     if (fs.existsSync(resourcePath)) {
       knownIngredients = JSON.parse(fs.readFileSync(resourcePath, "utf8"));
     }
 
-    // 🧩 Pre-filter forbidden and restricted from the incoming data
-    const nonPassArray = Array.isArray(nonPassJSON)
+    // 🧩 Parse input
+    const nonPassArray: any[] = Array.isArray(nonPassJSON)
       ? nonPassJSON
       : typeof nonPassJSON === "string"
       ? JSON.parse(nonPassJSON)
       : [];
 
-    const forbiddenItems = nonPassArray.filter(
-      (i: any) => i.verdict?.toUpperCase() === "FORBIDDEN"
+    // 🧠 Normalize annex → category
+    const normalizeVerdict = (v: any): string => {
+      if (!v) return "UNKNOWN";
+      const annex = (v.annex || "").toUpperCase();
+      const verdict = (v.verdict || "").toUpperCase();
+      if (verdict === "PRESERVATIVE" || annex === "V") return "PRESERVATIVE";
+      if (verdict === "UV FILTER" || annex === "VI") return "UV FILTER";
+      if (verdict === "COLOURANT" || annex === "IV") return "COLOURANT";
+      if (verdict === "FORBIDDEN" || annex === "II") return "FORBIDDEN";
+      if (verdict === "RESTRICTED" || annex === "III") return "RESTRICTED";
+      if (["PASS", "SAFE", "COMPLIANT"].includes(verdict)) return "PASSED";
+      return "UNKNOWN";
+    };
+
+    const normalizedArray: NormalizedIngredient[] = nonPassArray.map((item: any) => ({
+      ...item,
+      normalizedVerdict: normalizeVerdict(item),
+    }));
+
+    // Explicit typing to satisfy TypeScript
+    const forbiddenItems = normalizedArray.filter(
+      (i: NormalizedIngredient) => i.normalizedVerdict === "FORBIDDEN"
     );
-    const restrictedItems = nonPassArray.filter(
-      (i: any) => i.verdict?.toUpperCase() === "RESTRICTED"
+    const restrictedItems = normalizedArray.filter(
+      (i: NormalizedIngredient) => i.normalizedVerdict === "RESTRICTED"
+    );
+    const preservativeItems = normalizedArray.filter(
+      (i: NormalizedIngredient) => i.normalizedVerdict === "PRESERVATIVE"
+    );
+    const uvFilterItems = normalizedArray.filter(
+      (i: NormalizedIngredient) => i.normalizedVerdict === "UV FILTER"
+    );
+    const colourantItems = normalizedArray.filter(
+      (i: NormalizedIngredient) => i.normalizedVerdict === "COLOURANT"
     );
 
-    // Prepare the model prompt
+    // Prepare GPT prompt
     const nonPassPretty =
       typeof nonPassJSON === "string"
         ? nonPassJSON
         : JSON.stringify(nonPassJSON, null, 2);
 
-    const knownListSample = knownIngredients.slice(0, 1000).join(", "); // partial sample for context
+    const knownListSample = knownIngredients.slice(0, 1000).join(", ");
 
     const prompt = `
 You are an EU cosmetics regulation and INCI name expert.
@@ -56,32 +94,16 @@ Reference vocabulary (official INCI-style names):
 ${knownListSample}
 
 Goals:
-1. Review all FORBIDDEN ingredients.
-   - Explain briefly why they are prohibited.
-   - Output them as { ingredient, annex, reason }.
-   - Assume these are banned for all cosmetic use (Annex II).
-2. Review all RESTRICTED ingredients.
-   - Explain briefly *why* they are regulated (based on Annex III category).
-   - Output them as { ingredient, annex, reason, note }.
-   - Assume they are used within limits ("restricted but permitted").
-   - No speculation about actual concentration.
-3. Review all UNKNOWN or "Likely Safe" ingredients.
-   - Try to normalize each to a likely INCI name by matching against the provided vocabulary list.
-   - If confident match found, include in "passed" with the corrected name.
-   - If not confidently found, include in "unknown" with { ingredient, reason } stating why it might not match (e.g., plant extract, compound blend, or trade name).
-4. Return structured JSON, no explanations or commentary:
+1. Explain forbidden (Annex II) entries briefly.
+2. Explain restricted (Annex III) entries.
+3. Normalize unknowns, matching to INCI vocabulary if possible.
+4. Output structured JSON only:
 
 {
   "passed": ["string"],
-  "restricted": [
-    {"ingredient": "string", "annex": "string", "reason": "string", "note": "string"}
-  ],
-  "forbidden": [
-    {"ingredient": "string", "annex": "string", "reason": "string"}
-  ],
-  "unknown": [
-    {"ingredient": "string", "reason": "string"}
-  ]
+  "restricted": [{"ingredient": "string", "annex": "string", "reason": "string", "note": "string"}],
+  "forbidden": [{"ingredient": "string", "annex": "string", "reason": "string"}],
+  "unknown": [{"ingredient": "string", "reason": "string"}]
 }
 `;
 
@@ -91,12 +113,11 @@ Goals:
       messages: [
         {
           role: "system",
-          content:
-            "You are an EU cosmetics compliance expert returning structured JSON only."
+          content: "You are an EU cosmetics compliance expert returning structured JSON only.",
         },
-        { role: "user", content: prompt }
+        { role: "user", content: prompt },
       ],
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
     });
 
     const content = completion.choices[0].message?.content;
@@ -105,20 +126,43 @@ Goals:
 
     const result = JSON.parse(content);
 
-    // 🩵 Re-append passed ingredients (from client) without sending them to GPT
+    // 🩵 Re-append passed ingredients
     if (passedNames && Array.isArray(passedNames)) {
       if (!result.passed) result.passed = [];
       result.passed = [...new Set([...result.passed, ...passedNames])];
     }
 
-    // 🧠 Ensure forbidden list is preserved even if model omits it
+    // 🧠 Ensure forbidden list preserved
     if (!result.forbidden || result.forbidden.length === 0) {
-      result.forbidden = forbiddenItems.map((f: any) => ({
+      result.forbidden = forbiddenItems.map((f: NormalizedIngredient) => ({
         ingredient: f.input || f.matched_name || "Unknown",
         annex: f.annex || "II",
-        reason: "Listed under EU Annex II (forbidden for cosmetic use)."
+        reason: "Listed under EU Annex II (forbidden for cosmetic use).",
       }));
     }
+
+    // 🧩 Add regulated-safe categories
+    result.restricted = [
+      ...(result.restricted || []),
+      ...preservativeItems.map((i: NormalizedIngredient) => ({
+        ingredient: i.input || i.matched_name,
+        annex: "V",
+        reason: "Approved preservative (Annex V)",
+        note: "Permitted within EU concentration limits.",
+      })),
+      ...uvFilterItems.map((i: NormalizedIngredient) => ({
+        ingredient: i.input || i.matched_name,
+        annex: "VI",
+        reason: "Approved UV filter (Annex VI)",
+        note: "Permitted within EU concentration limits.",
+      })),
+      ...colourantItems.map((i: NormalizedIngredient) => ({
+        ingredient: i.input || i.matched_name,
+        annex: "IV",
+        reason: "Approved colourant (Annex IV)",
+        note: "Permitted within EU concentration limits.",
+      })),
+    ];
 
     return NextResponse.json(result);
   } catch (err: any) {
